@@ -1,4 +1,4 @@
-# Notion Auto LaTeX Converter ⚡
+# Notion LaTeX Converter ⚡
 
 A fast, lightweight, and privacy-first Chrome Extension that converts raw LaTeX syntax (`$inline$` and `$$block$$`) into native Notion equation blocks across your entire Notion page.
 
@@ -21,7 +21,7 @@ A fast, lightweight, and privacy-first Chrome Extension that converts raw LaTeX 
 ### 1. Install the Extension
 1. Clone or download this repository.
    ```bash
-   git clone [https://github.com/your-username/notion-latex-converter.git](https://github.com/your-username/notion-latex-converter.git)
+   git clone [https://github.com/GiulioTognetto/notion-latex-converter.git](https://github.com/GiulioTognetto/notion-latex-converter.git)
 2. Open Chrome and navigate to `chrome://extensions/`.
 3. Enable **Developer mode** in the top right corner.
 4. Click **Load unpacked** and select the folder containing the project files.
@@ -62,10 +62,10 @@ A fast, lightweight, and privacy-first Chrome Extension that converts raw LaTeX 
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://www.google.com/search?q=https://github.com/your-username/notion-latex-converter/issues) if you want to contribute or report a bug.
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://www.google.com/search?q=https://github.com/GiulioTognetto/notion-latex-converter/issues) if you want to contribute or report a bug.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the [MIT License](https://www.google.com/search?q=LICENSE).
+This project is licensed under the [MIT License](LICENSE).
