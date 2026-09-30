@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Notion Auto LaTeX Converter",
+  "version": "2.0",
+  "description": "Converte il testo LaTeX in formule native su Notion via API.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.notion.com/*",
+    "https://*.notion.so/*",
+    "https://*.notion.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.notion.so/*",
+        "https://notion.so/*",
+        "https://app.notion.com/*",
+        "https://*.notion.com/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Notion LaTeX Converter</title>
+  <style>
+    body {
+      width: 310px;
+      padding: 16px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #37352f;
+      background-color: #ffffff;
+    }
+
+    h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .guide {
+      background-color: #f7f6f3;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #454035;
+    }
+
+    .guide ol {
+      margin: 6px 0 0 0;
+      padding-left: 18px;
+    }
+
+    .guide li { margin-bottom: 4px; }
+    .guide a { color: #2563eb; text-decoration: none; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-primary { background-color: #2563eb; }
+    .btn-primary:hover { background-color: #1d4ed8; }
+
+    .btn-action {
+      background-color: #059669;
+      margin-bottom: 8px;
+    }
+    .btn-action:hover { background-color: #047857; }
+
+    .btn-stop {
+      background-color: #dc2626;
+      margin-bottom: 8px;
+      display: none;
+    }
+    .btn-stop:hover { background-color: #b91c1c; }
+
+    .btn-secondary {
+      background-color: #e5e7eb;
+      color: #37352f;
+    }
+    .btn-secondary:hover { background-color: #d1d5db; }
+
+    .btn-cancel {
+      background-color: transparent;
+      color: #6b7280;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    .btn-cancel:hover { background-color: #f3f4f6; color: #37352f; }
+
+    .status {
+      margin-top: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: center;
+      min-height: 16px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #059669;
+      background-color: #d1fae5;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+
+    #connected-view, #cancel-btn { display: none; }
+  </style>
+</head>
+<body>
+  <h3>Notion LaTeX Converter</h3>
+
+  <div id="setup-view">
+    <div class="guide">
+      <strong>📋 Configurazione (una sola volta):</strong>
+      <ol>
+        <li>Vai su <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a> e crea un'integrazione.</li>
+        <li>Copia il tuo <strong>Internal Integration Secret</strong> (inizia con <code>ntn_</code>).</li>
+        <li>Incolla il token qui sotto e salva.</li>
+        <li>Su Notion, fai click su <strong><code>...</code> &rarr; Connessioni</strong> in alto a destra per abilitare l'integrazione.</li>
+      </ol>
+    </div>
+
+    <label for="api-key-input">Token Notion:</label>
+    <input type="password" id="api-key-input" placeholder="ntn_..." />
+    <button id="save-btn" class="btn-primary">Salva e Connetti</button>
+    <button id="cancel-btn" class="btn-cancel">Annulla</button>
+  </div>
+
+  <div id="connected-view">
+    <div class="badge">✓ Connesso a Notion</div>
+    
+    <button id="convert-btn" class="btn-action">⚡ Converti LaTeX Nella Pagina Attiva</button>
+    <button id="stop-btn" class="btn-stop">⏹️️ Interrompi Conversione</button>
+    <button id="edit-token-btn" class="btn-secondary">⚙️ Modifica Token</button>
+  </div>
+
+  <div id="status-message" class="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
