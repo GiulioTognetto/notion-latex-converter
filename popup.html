@@ -104,6 +104,23 @@
       min-height: 16px;
     }
 
+    .progress-container {
+      display: none;
+      margin-top: 8px;
+      background-color: #e5e7eb;
+      border-radius: 4px;
+      height: 6px;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      background-color: #2563eb;
+      height: 100%;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
     .badge {
       display: inline-block;
       padding: 3px 8px;
@@ -115,13 +132,32 @@
       margin-bottom: 12px;
     }
 
+    .page-tracker {
+      display: none;
+      background-color: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #1e40af;
+      word-break: break-word;
+    }
+
+    .page-tracker strong {
+      display: block;
+      font-size: 11px;
+      color: #1d4ed8;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
     #connected-view, #cancel-btn { display: none; }
   </style>
 </head>
 <body>
   <h3>Notion LaTeX Converter</h3>
 
-  <!-- VIEW 1: Setup -->
   <div id="setup-view">
     <div class="guide">
       <strong>📋 Quick Setup Guide:</strong>
@@ -139,13 +175,22 @@
     <button id="cancel-btn" class="btn-cancel">Cancel</button>
   </div>
 
-  <!-- VIEW 2: Actions -->
   <div id="connected-view">
     <div class="badge">✓ Connected to Notion</div>
     
+    <!-- Elemento per visualizzare il titolo della pagina in elaborazione -->
+    <div id="page-tracker" class="page-tracker">
+      <strong>📌 Target Page:</strong>
+      <span id="page-title">Page Title</span>
+    </div>
+
     <button id="convert-btn" class="btn-action">⚡ Convert LaTeX on Active Page</button>
     <button id="stop-btn" class="btn-stop">⏹ Stop Conversion</button>
     <button id="edit-token-btn" class="btn-secondary">⚙️ Edit Token</button>
+
+    <div id="progress-container" class="progress-container">
+      <div id="progress-bar" class="progress-bar"></div>
+    </div>
   </div>
 
   <div id="status-message" class="status"></div>

@@ -9,17 +9,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   const stopBtn = document.getElementById("stop-btn");
   const editTokenBtn = document.getElementById("edit-token-btn");
   const statusMsg = document.getElementById("status-message");
+  const progressContainer = document.getElementById("progress-container");
+  const progressBar = document.getElementById("progress-bar");
 
   let existingToken = null;
 
   async function init() {
-    const storedData = await chrome.storage.local.get("notion_api_key");
+    const storedData = await chrome.storage.local.get(["notion_api_key", "conversionState"]);
     existingToken = storedData.notion_api_key || null;
 
     if (existingToken) {
       showConnectedView();
+      // Ripristina lo stato salvato se c'è un'elaborazione attiva
+      if (storedData.conversionState) {
+        updateUIFromState(storedData.conversionState);
+      }
     } else {
       showSetupView(false);
+    }
+  }
+
+  // Ascolta gli aggiornamenti dello stato in tempo reale da storage
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.conversionState) {
+      updateUIFromState(changes.conversionState.newValue);
+    }
+  });
+
+  function updateUIFromState(state) {
+    if (!state) return;
+
+    if (state.isProcessing) {
+      convertBtn.style.display = "none";
+      stopBtn.style.display = "block";
+      
+      if (state.total > 0) {
+        progressContainer.style.display = "block";
+        const percent = Math.min(100, Math.round((state.current / state.total) * 100));
+        progressBar.style.width = `${percent}%`;
+        statusMsg.style.color = "#2563eb";
+        statusMsg.innerText = `⏳ Processing: ${state.current} / ${state.total} expressions...`;
+      } else {
+        progressContainer.style.display = "none";
+        statusMsg.style.color = "#2563eb";
+        statusMsg.innerText = state.message || "⏳ Scanning page blocks...";
+      }
+    } else {
+      resetButtons();
+      progressContainer.style.display = "none";
+      progressBar.style.width = "0%";
+
+      if (state.lastResult) {
+        if (state.lastResult.success) {
+          statusMsg.style.color = "#059669";
+          statusMsg.innerText = `✓ Page updated! Converted ${state.lastResult.count} expression(s).`;
+        } else {
+          statusMsg.style.color = "#dc2626";
+          statusMsg.innerText = `❌ ${state.lastResult.error || "Operation stopped"}`;
+        }
+      }
     }
   }
 
@@ -49,55 +97,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     statusMsg.innerText = "";
   });
 
-  // Start Conversion
   convertBtn.addEventListener("click", async () => {
-    statusMsg.style.color = "#2563eb";
-    statusMsg.innerText = "⏳ Reading and processing page...";
-    
-    convertBtn.style.display = "none";
-    stopBtn.style.display = "block";
-
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab || !tab.url || (!tab.url.includes("notion.so") && !tab.url.includes("notion.com"))) {
       statusMsg.style.color = "#dc2626";
       statusMsg.innerText = "⚠️ Please open a Notion page before converting.";
-      resetButtons();
       return;
     }
 
     chrome.tabs.sendMessage(tab.id, { action: "start_conversion" }, (response) => {
-      resetButtons();
-
       if (chrome.runtime.lastError) {
         statusMsg.style.color = "#dc2626";
         statusMsg.innerText = "❌ Please reload the Notion page and try again.";
-        return;
-      }
-
-      if (response && response.success) {
-        statusMsg.style.color = "#059669";
-        statusMsg.innerText = `✓ Page updated! Converted ${response.count} block(s).`;
-      } else {
-        statusMsg.style.color = "#dc2626";
-        statusMsg.innerText = `❌ ${response?.error || "Operation cancelled"}`;
       }
     });
   });
 
-  // Stop Button
   stopBtn.addEventListener("click", async () => {
-    statusMsg.style.color = "#dc2626";
-    statusMsg.innerText = "⏹️ Stopping process...";
-
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
-      chrome.tabs.sendMessage(tab.id, { action: "stop_conversion" }, () => {
-        resetButtons();
-        statusMsg.innerText = "⏹️ Process stopped by user.";
-      });
-    } else {
-      resetButtons();
+      chrome.tabs.sendMessage(tab.id, { action: "stop_conversion" });
     }
   });
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Notion Auto LaTeX Converter",
-  "version": "2.0",
-  "description": "Converte il testo LaTeX in formule native su Notion via API.",
+  "version": "2.1",
+  "description": "Converts raw LaTeX syntax into native Notion formula blocks using the official Notion API.",
   "permissions": [
     "activeTab",
     "storage"
@@ -12,6 +12,9 @@
     "https://*.notion.so/*",
     "https://*.notion.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   },

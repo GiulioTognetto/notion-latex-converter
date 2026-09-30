@@ -11,9 +11,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     isProcessing = true;
     abortController = new AbortController();
 
+    updateState({ isProcessing: true, current: 0, total: 0, message: "Scanning page blocks...", lastResult: null });
+
     convertPageInMemory()
-      .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: err.message }))
+      .then((result) => {
+        updateState({ isProcessing: false, lastResult: result });
+        sendResponse(result);
+      })
+      .catch((err) => {
+        updateState({ isProcessing: false, lastResult: { success: false, error: err.message } });
+        sendResponse({ success: false, error: err.message });
+      })
       .finally(() => {
         isProcessing = false;
         abortController = null;
@@ -27,10 +35,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (abortController) {
       abortController.abort();
     }
+    updateState({ isProcessing: false, lastResult: { success: false, error: "Operation stopped by user." } });
     sendResponse({ success: true, stopped: true });
     return true;
   }
 });
+
+function updateState(partialState) {
+  chrome.storage.local.get("conversionState", (data) => {
+    const currentState = data.conversionState || {};
+    chrome.storage.local.set({
+      conversionState: { ...currentState, ...partialState }
+    });
+  });
+}
 
 async function getStoredApiKey() {
   const data = await chrome.storage.local.get("notion_api_key");
@@ -45,18 +63,13 @@ function getPageIdFromUrl() {
   return match ? match[1].replace(/-/g, "") : null;
 }
 
-/**
- * Normalizes text and creates 'equation' and 'text' nodes
- */
-function parseTextToRichText(rawText) {
+function parseInlineLatex(text) {
   const richText = [];
-  const text = rawText.replace(/\t/g, " ");
-
-  const latexRegex = /(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g;
+  const regex = /\$([^\$]+?)\$/g;
   let lastIndex = 0;
   let match;
 
-  while ((match = latexRegex.exec(text)) !== null) {
+  while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       const plainText = text.slice(lastIndex, match.index);
       if (plainText) {
@@ -64,23 +77,12 @@ function parseTextToRichText(rawText) {
       }
     }
 
-    const fullMatch = match[0];
-    let expression = "";
-
-    if (fullMatch.startsWith("$$") && fullMatch.endsWith("$$")) {
-      expression = fullMatch.slice(2, -2).trim();
-    } else if (fullMatch.startsWith("$") && fullMatch.endsWith("$")) {
-      expression = fullMatch.slice(1, -1).trim();
+    const formula = match[1].trim();
+    if (formula) {
+      richText.push({ type: "equation", equation: { expression: formula } });
     }
 
-    if (expression) {
-      richText.push({
-        type: "equation",
-        equation: { expression: expression }
-      });
-    }
-
-    lastIndex = latexRegex.lastIndex;
+    lastIndex = regex.lastIndex;
   }
 
   if (lastIndex < text.length) {
@@ -93,9 +95,6 @@ function parseTextToRichText(rawText) {
   return richText;
 }
 
-/**
- * RECURSIVELY fetches all blocks and child blocks across all hierarchy levels
- */
 async function fetchAllBlocksRecursive(parentId, apiKey) {
   let allBlocks = [];
   let hasMore = true;
@@ -142,12 +141,9 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
   return allBlocks;
 }
 
-/**
- * Processes all retrieved blocks in memory
- */
 function processBlocksInMemory(blocks) {
   let modifiedCount = 0;
-  const updatedBlocksPayload = [];
+  const operations = [];
 
   for (const block of blocks) {
     if (!isProcessing) break;
@@ -169,52 +165,157 @@ function processBlocksInMemory(blocks) {
 
     const fullText = rawFullText.replace(/\t/g, " ");
 
-    if (/(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/.test(fullText)) {
-      const newRichText = parseTextToRichText(fullText);
-      const hasEquations = newRichText.some(item => item.type === "equation");
+    if (/\$\$[\s\S]+?\$\$/.test(fullText)) {
+      modifiedCount++;
+      const parts = fullText.split(/(\$\$[\s\S]+?\$\$)/g);
+      const newBlocksToAppend = [];
+      let firstBlockRichText = null;
+      let convertOriginalBlockToEquation = false;
 
-      if (hasEquations) {
-        modifiedCount++;
-        updatedBlocksPayload.push({
-          blockId: block.id,
-          payload: {
-            [blockType]: {
-              rich_text: newRichText
+      for (const part of parts) {
+        if (!part) continue;
+
+        if (part.startsWith("$$") && part.endsWith("$$")) {
+          const expr = part.slice(2, -2).trim();
+          if (expr) {
+            if (firstBlockRichText === null && newBlocksToAppend.length === 0) {
+              convertOriginalBlockToEquation = true;
+              firstBlockRichText = expr;
+            } else {
+              newBlocksToAppend.push({
+                object: "block",
+                type: "equation",
+                equation: { expression: expr }
+              });
             }
           }
-        });
+        } else {
+          const parsedInline = parseInlineLatex(part);
+          if (parsedInline.length > 0) {
+            if (firstBlockRichText === null && !convertOriginalBlockToEquation) {
+              firstBlockRichText = parsedInline;
+            } else {
+              newBlocksToAppend.push({
+                object: "block",
+                type: blockType,
+                [blockType]: { rich_text: parsedInline }
+              });
+            }
+          }
+        }
       }
+
+      operations.push({
+        type: convertOriginalBlockToEquation ? "convert_block_to_equation" : "block_split",
+        blockId: block.id,
+        parentId: block.parent?.block_id || block.parent?.page_id,
+        firstBlockData: firstBlockRichText,
+        blockType: blockType,
+        newBlocksToAppend: newBlocksToAppend
+      });
+    } else if (/\$([^\$]+?)\$/.test(fullText)) {
+      modifiedCount++;
+      const newRichText = parseInlineLatex(fullText);
+      operations.push({
+        type: "inline_patch",
+        blockId: block.id,
+        payload: {
+          [blockType]: { rich_text: newRichText }
+        }
+      });
     }
   }
 
-  return { modifiedCount, updatedBlocksPayload };
+  return { modifiedCount, operations };
 }
 
-/**
- * Sends all update requests to Notion in parallel
- */
-async function applyChanges(updatedBlocksPayload, apiKey) {
+async function applyChanges(operations, apiKey) {
   if (!isProcessing) throw new Error("Operation cancelled by user.");
 
-  const patchPromises = updatedBlocksPayload.map(item => {
-    return fetch(`https://api.notion.com/v1/blocks/${item.blockId}`, {
-      method: "PATCH",
-      signal: abortController?.signal,
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(item.payload)
-    }).then(res => res.ok);
-  });
+  const total = operations.length;
+  let current = 0;
 
-  await Promise.all(patchPromises);
+  for (const op of operations) {
+    if (!isProcessing) throw new Error("Operation cancelled by user.");
+
+    if (op.type === "inline_patch") {
+      await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
+        method: "PATCH",
+        signal: abortController?.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(op.payload)
+      });
+    } else if (op.type === "convert_block_to_equation") {
+      await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
+        method: "PATCH",
+        signal: abortController?.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          type: "equation",
+          equation: { expression: op.firstBlockData }
+        })
+      });
+
+      if (op.newBlocksToAppend.length > 0 && op.parentId) {
+        await fetch(`https://api.notion.com/v1/blocks/${op.parentId}/children`, {
+          method: "PATCH",
+          signal: abortController?.signal,
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            children: op.newBlocksToAppend,
+            after: op.blockId
+          })
+        });
+      }
+    } else if (op.type === "block_split") {
+      await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
+        method: "PATCH",
+        signal: abortController?.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          [op.blockType]: { rich_text: op.firstBlockData }
+        })
+      });
+
+      if (op.newBlocksToAppend.length > 0 && op.parentId) {
+        await fetch(`https://api.notion.com/v1/blocks/${op.parentId}/children`, {
+          method: "PATCH",
+          signal: abortController?.signal,
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            children: op.newBlocksToAppend,
+            after: op.blockId
+          })
+        });
+      }
+    }
+
+    current++;
+    // Aggiorna lo stato in tempo reale per la barra di progresso nel popup
+    updateState({ current, total });
+  }
 }
 
-/**
- * Main Flow
- */
 async function convertPageInMemory() {
   const apiKey = await getStoredApiKey();
   if (!apiKey) throw new Error("Notion token not found.");
@@ -226,16 +327,17 @@ async function convertPageInMemory() {
 
   if (!isProcessing) throw new Error("Operation cancelled by user.");
 
-  const { modifiedCount, updatedBlocksPayload } = processBlocksInMemory(blocks);
+  const { modifiedCount, operations } = processBlocksInMemory(blocks);
 
   if (modifiedCount === 0) {
     throw new Error("No LaTeX formulas found to convert on this page.");
   }
 
-  await applyChanges(updatedBlocksPayload, apiKey);
+  updateState({ current: 0, total: operations.length, message: "Applying updates..." });
+
+  await applyChanges(operations, apiKey);
 
   if (isProcessing) {
-    setTimeout(() => window.location.reload(), 500);
     return { success: true, count: modifiedCount };
   } else {
     throw new Error("Operation cancelled.");
