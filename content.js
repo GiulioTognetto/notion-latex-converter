@@ -16,6 +16,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     updateState({ 
       isProcessing: true, 
       pageTitle: detectedPageTitle,
+      pageUrl: window.location.href,
       current: 0, 
       total: 0, 
       message: "Scanning page blocks...", 
@@ -51,14 +52,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 function getPageTitle() {
-  const titleEl = document.querySelector(".notion-page-block [contenteditable='true']") || document.querySelector("title");
-  if (titleEl) {
-    const text = titleEl.innerText || titleEl.textContent;
-    if (text && text.trim()) {
-      return text.replace(" | Notion", "").trim();
+  const titleSelectors = [
+    ".notion-page-block [contenteditable='true']",
+    "[data-content-editable-leaf='true']",
+    ".notion-header-block [contenteditable='true']",
+    "h1.notion-page-block"
+  ];
+
+  for (const selector of titleSelectors) {
+    const el = document.querySelector(selector);
+    if (el) {
+      const text = el.innerText || el.textContent;
+      if (text && text.trim()) {
+        return text.trim();
+      }
     }
   }
-  return "Notion Page";
+
+  if (document.title && document.title.trim()) {
+    const cleanedTitle = document.title
+      .replace(/\| Notion$/i, "")
+      .replace(/– Notion$/i, "")
+      .replace(/- Notion$/i, "")
+      .trim();
+
+    if (cleanedTitle && cleanedTitle !== "Notion") {
+      return cleanedTitle;
+    }
+  }
+
+  return "Active Notion Page";
 }
 
 function updateState(partialState) {
@@ -83,29 +106,27 @@ function getPageIdFromUrl() {
   return match ? match[1].replace(/-/g, "") : null;
 }
 
-/**
- * Decodes HTML entities (e.g. &lt; -> <) and normalizes tabs and escaped characters
- */
-function normalizeLatexText(text) {
+function sanitizeRawText(text) {
   if (!text) return "";
   return text
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\u00A0/g, " ")
+    .replace(/&nbsp;/g, " ")
     .replace(/\t/g, " ")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/\\{2}/g, "\\"); // Fix double escaping if present
+    .replace(/&amp;/g, "&");
 }
 
-/**
- * Parses inline $...$ syntax into rich_text elements
- */
-function parseInlineLatex(text) {
+function parseInlineLatexToRichText(rawText) {
   const richText = [];
-  const regex = /\$([^\$]+?)\$/g;
+  const text = sanitizeRawText(rawText);
+
+  const inlineRegex = /\$([^\$]+?)\$/g;
   let lastIndex = 0;
   let match;
 
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = inlineRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       const plainText = text.slice(lastIndex, match.index);
       if (plainText) {
@@ -115,10 +136,13 @@ function parseInlineLatex(text) {
 
     const formula = match[1].trim();
     if (formula) {
-      richText.push({ type: "equation", equation: { expression: formula } });
+      richText.push({
+        type: "equation",
+        equation: { expression: formula }
+      });
     }
 
-    lastIndex = regex.lastIndex;
+    lastIndex = inlineRegex.lastIndex;
   }
 
   if (lastIndex < text.length) {
@@ -138,7 +162,9 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
 
   while (hasMore && isProcessing) {
     let url = `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`;
-    if (startCursor) url += `&start_cursor=${startCursor}`;
+    if (startCursor) {
+      url += `&start_cursor=${startCursor}`;
+    }
 
     const response = await fetch(url, {
       signal: abortController?.signal,
@@ -160,17 +186,12 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
     startCursor = data.next_cursor;
   }
 
-  const childFetchPromises = allBlocks
-    .filter(block => block.has_children)
-    .map(async (block) => {
-      const subBlocks = await fetchAllBlocksRecursive(block.id, apiKey);
-      return subBlocks;
-    });
+  for (const block of [...allBlocks]) {
+    if (!isProcessing) break;
 
-  if (childFetchPromises.length > 0) {
-    const nestedBlocksArrays = await Promise.all(childFetchPromises);
-    for (const nestedArray of nestedBlocksArrays) {
-      allBlocks.push(...nestedArray);
+    if (block.has_children) {
+      const subBlocks = await fetchAllBlocksRecursive(block.id, apiKey);
+      allBlocks.push(...subBlocks);
     }
   }
 
@@ -199,15 +220,13 @@ function processBlocksInMemory(blocks) {
       })
       .join("");
 
-    const fullText = normalizeLatexText(rawFullText);
+    const fullText = sanitizeRawText(rawFullText).trim();
 
-    // CASE 1: Contains Block Formula ($$...$$)
     if (/\$\$[\s\S]+?\$\$/.test(fullText)) {
       modifiedCount++;
       const parts = fullText.split(/(\$\$[\s\S]+?\$\$)/g);
       const newBlocksToAppend = [];
-      let firstBlockRichText = null;
-      let convertOriginalBlockToEquation = false;
+      let leadingTextRichText = null;
 
       for (const part of parts) {
         if (!part) continue;
@@ -215,22 +234,17 @@ function processBlocksInMemory(blocks) {
         if (part.startsWith("$$") && part.endsWith("$$")) {
           const expr = part.slice(2, -2).trim();
           if (expr) {
-            if (firstBlockRichText === null && newBlocksToAppend.length === 0) {
-              convertOriginalBlockToEquation = true;
-              firstBlockRichText = expr;
-            } else {
-              newBlocksToAppend.push({
-                object: "block",
-                type: "equation",
-                equation: { expression: expr }
-              });
-            }
+            newBlocksToAppend.push({
+              object: "block",
+              type: "equation",
+              equation: { expression: expr }
+            });
           }
         } else {
-          const parsedInline = parseInlineLatex(part);
+          const parsedInline = parseInlineLatexToRichText(part);
           if (parsedInline.length > 0) {
-            if (firstBlockRichText === null && !convertOriginalBlockToEquation) {
-              firstBlockRichText = parsedInline;
+            if (leadingTextRichText === null && newBlocksToAppend.length === 0) {
+              leadingTextRichText = parsedInline;
             } else {
               newBlocksToAppend.push({
                 object: "block",
@@ -243,18 +257,16 @@ function processBlocksInMemory(blocks) {
       }
 
       operations.push({
-        type: convertOriginalBlockToEquation ? "convert_block_to_equation" : "block_split",
+        type: "block_equation_replace",
         blockId: block.id,
         parentId: block.parent?.block_id || block.parent?.page_id,
-        firstBlockData: firstBlockRichText,
+        leadingTextRichText: leadingTextRichText,
         blockType: blockType,
         newBlocksToAppend: newBlocksToAppend
       });
-    } 
-    // CASE 2: Contains Inline Formula ($...$)
-    else if (/\$([^\$]+?)\$/.test(fullText)) {
+    } else if (/\$([^\$]+?)\$/.test(fullText)) {
       modifiedCount++;
-      const newRichText = parseInlineLatex(fullText);
+      const newRichText = parseInlineLatexToRichText(fullText);
       operations.push({
         type: "inline_patch",
         blockId: block.id,
@@ -288,23 +300,17 @@ async function applyChanges(operations, apiKey) {
         },
         body: JSON.stringify(op.payload)
       });
-    } else if (op.type === "convert_block_to_equation") {
-      await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
-        method: "PATCH",
-        signal: abortController?.signal,
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          type: "equation",
-          equation: { expression: op.firstBlockData }
-        })
-      });
+    } else if (op.type === "block_equation_replace") {
+      const parentId = op.parentId;
 
-      if (op.newBlocksToAppend.length > 0 && op.parentId) {
-        await fetch(`https://api.notion.com/v1/blocks/${op.parentId}/children`, {
+      if (!parentId) {
+        current++;
+        updateState({ current, total });
+        continue;
+      }
+
+      if (op.newBlocksToAppend.length > 0) {
+        await fetch(`https://api.notion.com/v1/blocks/${parentId}/children`, {
           method: "PATCH",
           signal: abortController?.signal,
           headers: {
@@ -318,22 +324,9 @@ async function applyChanges(operations, apiKey) {
           })
         });
       }
-    } else if (op.type === "block_split") {
-      await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
-        method: "PATCH",
-        signal: abortController?.signal,
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          [op.blockType]: { rich_text: op.firstBlockData }
-        })
-      });
 
-      if (op.newBlocksToAppend.length > 0 && op.parentId) {
-        await fetch(`https://api.notion.com/v1/blocks/${op.parentId}/children`, {
+      if (op.leadingTextRichText && op.leadingTextRichText.length > 0) {
+        await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
           method: "PATCH",
           signal: abortController?.signal,
           headers: {
@@ -342,9 +335,17 @@ async function applyChanges(operations, apiKey) {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            children: op.newBlocksToAppend,
-            after: op.blockId
+            [op.blockType]: { rich_text: op.leadingTextRichText }
           })
+        });
+      } else {
+        await fetch(`https://api.notion.com/v1/blocks/${op.blockId}`, {
+          method: "DELETE",
+          signal: abortController?.signal,
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Notion-Version": "2022-06-28"
+          }
         });
       }
     }

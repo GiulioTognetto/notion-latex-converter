@@ -152,6 +152,16 @@
       margin-bottom: 2px;
     }
 
+    .page-tracker a {
+      color: #2563eb;
+      font-weight: 600;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .page-tracker a:hover {
+      color: #1d4ed8;
+    }
+
     #connected-view, #cancel-btn { display: none; }
   </style>
 </head>
@@ -178,10 +188,10 @@
   <div id="connected-view">
     <div class="badge">✓ Connected to Notion</div>
     
-    <!-- Elemento per visualizzare il titolo della pagina in elaborazione -->
+    <!-- Clickable Page Link -->
     <div id="page-tracker" class="page-tracker">
       <strong>📌 Target Page:</strong>
-      <span id="page-title">Page Title</span>
+      <a id="page-link" href="#" target="_blank">Page Title</a>
     </div>
 
     <button id="convert-btn" class="btn-action">⚡ Convert LaTeX on Active Page</button>

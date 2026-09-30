@@ -11,8 +11,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusMsg = document.getElementById("status-message");
   const progressContainer = document.getElementById("progress-container");
   const progressBar = document.getElementById("progress-bar");
+  const pageTracker = document.getElementById("page-tracker");
+  const pageLink = document.getElementById("page-link");
 
   let existingToken = null;
+  let targetTabId = null;
+  let targetPageUrl = null;
 
   async function init() {
     const storedData = await chrome.storage.local.get(["notion_api_key", "conversionState"]);
@@ -20,7 +24,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (existingToken) {
       showConnectedView();
-      // Ripristina lo stato salvato se c'è un'elaborazione attiva
       if (storedData.conversionState) {
         updateUIFromState(storedData.conversionState);
       }
@@ -29,7 +32,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Ascolta gli aggiornamenti dello stato in tempo reale da storage
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes.conversionState) {
       updateUIFromState(changes.conversionState.newValue);
@@ -39,10 +41,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   function updateUIFromState(state) {
     if (!state) return;
 
+    if (state.tabId) targetTabId = state.tabId;
+    if (state.pageUrl) targetPageUrl = state.pageUrl;
+
     if (state.isProcessing) {
       convertBtn.style.display = "none";
       stopBtn.style.display = "block";
       
+      if (state.pageTitle) {
+        pageTracker.style.display = "block";
+        pageLink.innerText = state.pageTitle;
+      } else {
+        pageTracker.style.display = "none";
+      }
+
       if (state.total > 0) {
         progressContainer.style.display = "block";
         const percent = Math.min(100, Math.round((state.current / state.total) * 100));
@@ -56,6 +68,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else {
       resetButtons();
+      pageTracker.style.display = "none";
       progressContainer.style.display = "none";
       progressBar.style.width = "0%";
 
@@ -70,6 +83,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
   }
+
+  // Focus target tab on link click
+  pageLink.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (targetTabId) {
+      try {
+        const tab = await chrome.tabs.get(targetTabId);
+        if (tab) {
+          chrome.tabs.update(targetTabId, { active: true });
+          chrome.windows.update(tab.windowId, { focused: true });
+          return;
+        }
+      } catch (err) {
+        // Tab was closed
+      }
+    }
+    
+    if (targetPageUrl) {
+      chrome.tabs.create({ url: targetPageUrl });
+    }
+  });
 
   saveBtn.addEventListener("click", async () => {
     const key = apiKeyInput.value.trim();
