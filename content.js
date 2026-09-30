@@ -4,7 +4,7 @@ let abortController = null;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "start_conversion") {
     if (isProcessing) {
-      sendResponse({ success: false, error: "Conversione già in corso." });
+      sendResponse({ success: false, error: "Conversion is already running." });
       return true;
     }
 
@@ -46,7 +46,7 @@ function getPageIdFromUrl() {
 }
 
 /**
- * Normalizza il testo ed estrae nodi 'equation' e 'text'
+ * Normalizes text and creates 'equation' and 'text' nodes
  */
 function parseTextToRichText(rawText) {
   const richText = [];
@@ -94,14 +94,13 @@ function parseTextToRichText(rawText) {
 }
 
 /**
- * Scansiona ed estrae RICORSIVAMENTE tutti i blocchi e sotto-blocchi della pagina
+ * RECURSIVELY fetches all blocks and child blocks across all hierarchy levels
  */
 async function fetchAllBlocksRecursive(parentId, apiKey) {
   let allBlocks = [];
   let hasMore = true;
   let startCursor = undefined;
 
-  // 1. Recupera tutti i figli diretti del blocco/pagina corrente
   while (hasMore && isProcessing) {
     let url = `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`;
     if (startCursor) url += `&start_cursor=${startCursor}`;
@@ -116,7 +115,7 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.message || "Errore durante la lettura dei blocchi.");
+      throw new Error(err.message || "Failed to retrieve page blocks.");
     }
 
     const data = await response.json();
@@ -126,8 +125,6 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
     startCursor = data.next_cursor;
   }
 
-  // 2. Se tra i blocchi ce ne sono alcuni con sotto-blocchi (Callout, Toggle, Liste, Colonne, ecc.)
-  // esegue la ricerca ricorsiva nei figli
   const childFetchPromises = allBlocks
     .filter(block => block.has_children)
     .map(async (block) => {
@@ -146,7 +143,7 @@ async function fetchAllBlocksRecursive(parentId, apiKey) {
 }
 
 /**
- * Analizza la lista completa di tutti i blocchi (inclusi i sotto-livelli)
+ * Processes all retrieved blocks in memory
  */
 function processBlocksInMemory(blocks) {
   let modifiedCount = 0;
@@ -162,7 +159,6 @@ function processBlocksInMemory(blocks) {
       continue;
     }
 
-    // Ricostruisce il testo grezzo (gestendo anche blocchi con equazioni parziali)
     const rawFullText = blockData.rich_text
       .map(t => {
         if (t.type === "text") return t.plain_text || t.text?.content || "";
@@ -195,10 +191,10 @@ function processBlocksInMemory(blocks) {
 }
 
 /**
- * Invia le modifiche in parallelo per tutti i blocchi modificati
+ * Sends all update requests to Notion in parallel
  */
 async function applyChanges(updatedBlocksPayload, apiKey) {
-  if (!isProcessing) throw new Error("Operazione interrotta dall'utente.");
+  if (!isProcessing) throw new Error("Operation cancelled by user.");
 
   const patchPromises = updatedBlocksPayload.map(item => {
     return fetch(`https://api.notion.com/v1/blocks/${item.blockId}`, {
@@ -217,24 +213,23 @@ async function applyChanges(updatedBlocksPayload, apiKey) {
 }
 
 /**
- * Flusso Principale
+ * Main Flow
  */
 async function convertPageInMemory() {
   const apiKey = await getStoredApiKey();
-  if (!apiKey) throw new Error("Token Notion non trovato.");
+  if (!apiKey) throw new Error("Notion token not found.");
 
   const pageId = getPageIdFromUrl();
-  if (!pageId) throw new Error("ID pagina non trovato nell'URL.");
+  if (!pageId) throw new Error("Could not detect Page ID from URL.");
 
-  // Scarica l'albero completo dei blocchi a qualsiasi livello di annidamento
   const blocks = await fetchAllBlocksRecursive(pageId, apiKey);
 
-  if (!isProcessing) throw new Error("Operazione interrotta dall'utente.");
+  if (!isProcessing) throw new Error("Operation cancelled by user.");
 
   const { modifiedCount, updatedBlocksPayload } = processBlocksInMemory(blocks);
 
   if (modifiedCount === 0) {
-    throw new Error("Nessuna formula da convertire trovata nella pagina.");
+    throw new Error("No LaTeX formulas found to convert on this page.");
   }
 
   await applyChanges(updatedBlocksPayload, apiKey);
@@ -243,6 +238,6 @@ async function convertPageInMemory() {
     setTimeout(() => window.location.reload(), 500);
     return { success: true, count: modifiedCount };
   } else {
-    throw new Error("Operazione interrotta.");
+    throw new Error("Operation cancelled.");
   }
 }

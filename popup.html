@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Notion LaTeX Converter</title>
@@ -121,29 +121,31 @@
 <body>
   <h3>Notion LaTeX Converter</h3>
 
+  <!-- VIEW 1: Setup -->
   <div id="setup-view">
     <div class="guide">
-      <strong>📋 Configurazione (una sola volta):</strong>
+      <strong>📋 Quick Setup Guide:</strong>
       <ol>
-        <li>Vai su <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a> e crea un'integrazione.</li>
-        <li>Copia il tuo <strong>Internal Integration Secret</strong> (inizia con <code>ntn_</code>).</li>
-        <li>Incolla il token qui sotto e salva.</li>
-        <li>Su Notion, fai click su <strong><code>...</code> &rarr; Connessioni</strong> in alto a destra per abilitare l'integrazione.</li>
+        <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a> and create an integration.</li>
+        <li>Copy your <strong>Internal Integration Secret</strong> (starts with <code>ntn_</code>).</li>
+        <li>Paste the token below and save.</li>
+        <li>In Notion, click <strong><code>...</code> &rarr; Connections</strong> at the top right of your page to connect the integration.</li>
       </ol>
     </div>
 
-    <label for="api-key-input">Token Notion:</label>
+    <label for="api-key-input">Notion Token:</label>
     <input type="password" id="api-key-input" placeholder="ntn_..." />
-    <button id="save-btn" class="btn-primary">Salva e Connetti</button>
-    <button id="cancel-btn" class="btn-cancel">Annulla</button>
+    <button id="save-btn" class="btn-primary">Save & Connect</button>
+    <button id="cancel-btn" class="btn-cancel">Cancel</button>
   </div>
 
+  <!-- VIEW 2: Actions -->
   <div id="connected-view">
-    <div class="badge">✓ Connesso a Notion</div>
+    <div class="badge">✓ Connected to Notion</div>
     
-    <button id="convert-btn" class="btn-action">⚡ Converti LaTeX Nella Pagina Attiva</button>
-    <button id="stop-btn" class="btn-stop">⏹️️ Interrompi Conversione</button>
-    <button id="edit-token-btn" class="btn-secondary">⚙️ Modifica Token</button>
+    <button id="convert-btn" class="btn-action">⚡ Convert LaTeX on Active Page</button>
+    <button id="stop-btn" class="btn-stop">⏹ Stop Conversion</button>
+    <button id="edit-token-btn" class="btn-secondary">⚙️ Edit Token</button>
   </div>
 
   <div id="status-message" class="status"></div>

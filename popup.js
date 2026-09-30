@@ -31,10 +31,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       existingToken = key;
       showConnectedView();
       statusMsg.style.color = "#059669";
-      statusMsg.innerText = "✓ Token salvato!";
+      statusMsg.innerText = "✓ Token saved successfully!";
     } else {
       statusMsg.style.color = "#dc2626";
-      statusMsg.innerText = "⚠️ Il token deve iniziare con 'ntn_' o 'secret_'";
+      statusMsg.innerText = "⚠️ Token must start with 'ntn_' or 'secret_'";
     }
   });
 
@@ -49,10 +49,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     statusMsg.innerText = "";
   });
 
-  // Avvia la conversione
+  // Start Conversion
   convertBtn.addEventListener("click", async () => {
     statusMsg.style.color = "#2563eb";
-    statusMsg.innerText = "⏳ Lettura ed elaborazione pagina...";
+    statusMsg.innerText = "⏳ Reading and processing page...";
     
     convertBtn.style.display = "none";
     stopBtn.style.display = "block";
@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!tab || !tab.url || (!tab.url.includes("notion.so") && !tab.url.includes("notion.com"))) {
       statusMsg.style.color = "#dc2626";
-      statusMsg.innerText = "⚠️ Apri una pagina di Notion prima di convertire.";
+      statusMsg.innerText = "⚠️ Please open a Notion page before converting.";
       resetButtons();
       return;
     }
@@ -71,30 +71,30 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (chrome.runtime.lastError) {
         statusMsg.style.color = "#dc2626";
-        statusMsg.innerText = "❌ Ricarica la pagina Notion e riprova.";
+        statusMsg.innerText = "❌ Please reload the Notion page and try again.";
         return;
       }
 
       if (response && response.success) {
         statusMsg.style.color = "#059669";
-        statusMsg.innerText = `✓ Pagina aggiornata! Convertiti ${response.count} blocchi.`;
+        statusMsg.innerText = `✓ Page updated! Converted ${response.count} block(s).`;
       } else {
         statusMsg.style.color = "#dc2626";
-        statusMsg.innerText = `❌ ${response?.error || "Operazione annullata"}`;
+        statusMsg.innerText = `❌ ${response?.error || "Operation cancelled"}`;
       }
     });
   });
 
-  // Pulsante di Stop
+  // Stop Button
   stopBtn.addEventListener("click", async () => {
     statusMsg.style.color = "#dc2626";
-    statusMsg.innerText = "⏹️ Interruzione in corso...";
+    statusMsg.innerText = "⏹️ Stopping process...";
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
       chrome.tabs.sendMessage(tab.id, { action: "stop_conversion" }, () => {
         resetButtons();
-        statusMsg.innerText = "⏹️ Operazione interrotta dall'utente.";
+        statusMsg.innerText = "⏹️ Process stopped by user.";
       });
     } else {
       resetButtons();
