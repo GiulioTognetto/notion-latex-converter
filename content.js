@@ -11,7 +11,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     isProcessing = true;
     abortController = new AbortController();
 
-    updateState({ isProcessing: true, current: 0, total: 0, message: "Scanning page blocks...", lastResult: null });
+    const detectedPageTitle = getPageTitle();
+
+    updateState({ 
+      isProcessing: true, 
+      pageTitle: detectedPageTitle,
+      current: 0, 
+      total: 0, 
+      message: "Scanning page blocks...", 
+      lastResult: null 
+    });
 
     convertPageInMemory()
       .then((result) => {
@@ -41,6 +50,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+function getPageTitle() {
+  const titleEl = document.querySelector(".notion-page-block [contenteditable='true']") || document.querySelector("title");
+  if (titleEl) {
+    const text = titleEl.innerText || titleEl.textContent;
+    if (text && text.trim()) {
+      return text.replace(" | Notion", "").trim();
+    }
+  }
+  return "Notion Page";
+}
+
 function updateState(partialState) {
   chrome.storage.local.get("conversionState", (data) => {
     const currentState = data.conversionState || {};
@@ -63,6 +83,22 @@ function getPageIdFromUrl() {
   return match ? match[1].replace(/-/g, "") : null;
 }
 
+/**
+ * Decodes HTML entities (e.g. &lt; -> <) and normalizes tabs and escaped characters
+ */
+function normalizeLatexText(text) {
+  if (!text) return "";
+  return text
+    .replace(/\t/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/\\{2}/g, "\\"); // Fix double escaping if present
+}
+
+/**
+ * Parses inline $...$ syntax into rich_text elements
+ */
 function parseInlineLatex(text) {
   const richText = [];
   const regex = /\$([^\$]+?)\$/g;
@@ -163,8 +199,9 @@ function processBlocksInMemory(blocks) {
       })
       .join("");
 
-    const fullText = rawFullText.replace(/\t/g, " ");
+    const fullText = normalizeLatexText(rawFullText);
 
+    // CASE 1: Contains Block Formula ($$...$$)
     if (/\$\$[\s\S]+?\$\$/.test(fullText)) {
       modifiedCount++;
       const parts = fullText.split(/(\$\$[\s\S]+?\$\$)/g);
@@ -213,7 +250,9 @@ function processBlocksInMemory(blocks) {
         blockType: blockType,
         newBlocksToAppend: newBlocksToAppend
       });
-    } else if (/\$([^\$]+?)\$/.test(fullText)) {
+    } 
+    // CASE 2: Contains Inline Formula ($...$)
+    else if (/\$([^\$]+?)\$/.test(fullText)) {
       modifiedCount++;
       const newRichText = parseInlineLatex(fullText);
       operations.push({
@@ -311,7 +350,6 @@ async function applyChanges(operations, apiKey) {
     }
 
     current++;
-    // Aggiorna lo stato in tempo reale per la barra di progresso nel popup
     updateState({ current, total });
   }
 }
